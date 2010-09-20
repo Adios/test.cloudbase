@@ -1,0 +1,53 @@
+#!/bin/sh
+#
+# $FreeBSD: ports/www/lighttpd/files/lighttpd.sh.in,v 1.7 2010/08/03 19:09:15 mm Exp $
+#
+# PROVIDE: acpt
+# REQUIRE: DAEMON
+# KEYWORD: shutdown
+#
+# Add the following lines to /etc/rc.conf to enable acpt:
+#
+# acpt_enable (bool):		Set it to "YES" to enable acpt.
+#                               Default is "NO".
+# acpt_program (path):		Set full path to acpt binary.
+#                               Default is "/usr/local/sbin/acpt".
+# acpt_chdir (path):		Set full path to acpt root.
+#                               Default is "/var/run/acpt".
+# acpt_port (string):		Set port number acpt listen on.
+#				Default is "31337".
+# acpt_quiet (flag):		Set it to "YES" to suppress information display.
+#				Default is "YES".
+#				
+
+. /etc/rc.subr
+
+name=acpt
+rc_var=`set_rcvar`
+
+load_rc_config $name
+
+#
+# in case user have no permission to run the script from the standard path.
+#
+_rc_config=`dirname \`realpath $0\``/../rc.conf
+test -e $_rc_config && . $_rc_config
+
+: ${acpt_enable="NO"}
+: ${acpt_chdir="/var/run/acpt"}
+: ${acpt_port="31337"}
+
+command="/usr/local/sbin/acpt"
+command_args="${acpt_port} ${acpt_quiet+> /dev/null 2>&1} &"
+clean_cmd=clean_cmd
+extra_commands="clean"
+
+clean_cmd()
+{
+	run_rc_command stop 2>/dev/null
+	cd ${acpt_chdir} && rm -f name.disk segment.disk object.disk NDB-error.log && \
+	echo "Cleaning ${name}."
+}
+
+run_rc_command $1
+# vim:ts=8 sts=8 sw=8:

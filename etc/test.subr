@@ -1,0 +1,283 @@
+# This software is licensed under the CC-GNU GPL.
+# (http://creativecommons.org/licenses/GPL/2.0/)
+#             Tzu-Hao Tsai (Adios)
+#
+# test.subr
+#	the simple test framework.
+#
+
+# list of recently working directories.
+_wd_list=
+
+#
+# benchmark command
+#	execute command and print the elapsed time, terminate the script if it fails.
+#
+benchmark()
+{
+	local _command _result
+	_command=$@
+
+	if [ -z "$_command" ]; then
+		err 64 'UESAGE: benchmark command'
+	fi
+
+	info "<$_command>:"
+	_result=`time 2>&1 ${_verbose_benchmark+'-l'} $_command > /dev/null` || exit 1
+	printf "$_result\n\n"
+}
+
+#
+# verbose_benchmark command
+#	execute command and print the elapsed time as will as rusage information.
+#
+verbose_benchmark()
+{
+	local _verbose_benchmark
+	_verbose_benchmark=1
+	benchmark $@
+}
+
+#
+# push_wd [dir]
+#	save the current working directory, and change to a temporatily directory if
+#	[dir] is not given, otherwise cd to [dir].
+#
+push_wd()
+{
+	local _cwd _dir _prefix
+	_dir=$1
+	_cwd=`pwd`
+
+	if [ -n "$_dir" ]; then
+		cd $_dir
+	else
+		_prefix=`basename $0`
+		cd `mktemp -d -t $_prefix` || exit 1
+	fi
+
+	test $? -eq 0 && _wd_list="$_cwd\n$_wd_list" || exit 1
+}
+
+#
+# pop_wd [clean]
+#	cd to the most recently working directory, rm -rf currently working directory if
+#	[clean] has been set.
+#
+pop_wd()
+{
+	local _cwd _chdir _do_clean
+	_do_clean=$1
+
+	_chdir=`printf "$_wd_list" | head -1`
+	_cwd=`pwd`
+
+	cd $_chdir || exit 1
+
+	if [ -n "$_do_clean" ]; then
+		rm -rf $_cwd
+	fi
+
+	_wd_list=`printf "$_wd_list" | sed 1d`
+}
+
+#
+# daemon command [daemons]
+#	remote command execution by using rc scripts,
+#	execution result will be redirected to stderr.
+#
+daemon()
+{
+	local _command _daemons
+	_command=$1
+	shift
+
+	if [ $# -gt 1 ]; then
+		_daemons=$@
+	fi
+
+	if [ -z "$_command" ]; then
+		err 64 'USAGE: daemon command'
+	fi
+
+	for daemon in ${_daemons-${daemon_required}}; do
+		eval 1>&2 ssh \${${daemon}_ssh_host?"${daemon}_ssh_host unset"} \
+		-p \${${daemon}_ssh_port-'22'} \
+		\${${daemon}_script?"${daemon}_script unset"} $_command
+	done
+}
+
+#
+# assert_ok expression
+#	execute expression and terminate if it fails.
+#
+assert_ok()
+{
+	local _expression
+	_expression=$@
+
+	if [ -z "$_expression" ]; then
+		err 64 'USAGE: assert_ok expression'
+	fi
+
+	assert number 0 $_expression
+}
+
+#
+# assert_equal expect expression
+#	execute expression and terminate if result(string) != expect(string).
+#
+assert_equal()
+{
+	local _expect _expression
+	_expect=$1
+	shift
+	_expression=$@
+
+	if [ -z "$_expression" ]; then
+		err 64 'USAGE: assert_equal expect expression'
+	fi
+
+	assert string "$_expect" $_expression
+}
+
+assert()
+{
+	local _type _expect _expression _result
+	_type=$1
+	shift
+	_expect=$1
+	shift
+	_expression=$@
+
+	if [ -z "$_type" -o -z "$_expression" ]; then
+		err 64 'USAGE: assert type expect expression'
+	fi
+	
+	case $_type in
+	number)
+		eval $_expression > /dev/null 2>&1
+		_result=$?
+		if [ $_result -ne $_expect ]; then
+			err 1 "<$_expect> expected but was <$_result>."
+		fi
+		;;
+	string)
+		_result=`$_expression 2>/dev/null`
+		if [ "$_expect" != "$_result" ]; then
+			err 1 "<$_expect> expected but was <$_result>."
+		fi
+		;;
+	*)
+		err 1 "<$_type> is not implemented yet."
+	esac
+
+	echo 1>&2 -n '.'
+}
+
+err()
+{
+	local _eval
+	_eval=$1
+	shift
+
+	echo 1>&2 $*
+	exit $_eval
+}
+
+info()
+{
+	echo $*
+}
+
+debug()
+{
+	echo 1>&2 $*
+}
+
+reverse()
+{
+	local _result
+
+	for elem; do
+		_result="$elem $_result"
+	done
+
+	echo $_result
+}
+
+#
+# total_files path
+#	print total files under path.
+#
+total_files()
+{
+	local _path
+	_path=$1
+
+	if [ -z "$_path" ]; then
+		err 64 'USAGE: total_files path'
+	fi
+
+	info `find $_path | wc -l | tr -d ' '`
+}
+
+#
+# total_capacity path
+#	print the size(KB) of total files under path.
+#
+total_capacity()
+{
+	local _path
+	_path=$1
+
+	if [ -z "$_path" ]; then
+		err 64 'USAGE: total_capacity path'
+	fi
+
+	info `du -s $_path | awk '{print $1}'`
+}
+
+#
+# average_filesize path
+#	print average file size under path.
+#
+average_filesize()
+{
+	local _path
+	_path=$1
+
+	if [ -z "$_path" ]; then
+		err 64 'USAGE: average_filesize path'
+	fi
+
+	info `echo "scale=3; \`total_capacity $_path\` / \`total_files $_path\`" | bc`
+}
+
+#
+# pathinfo_stamp path
+#	print files, size, avg size for the specified path.
+#
+pathinfo_stamp()
+{
+	local _path
+	_path=$1
+
+	if [ -z "$_path" ]; then
+		err 64 'USAGE: pathinfo_stamp path'
+	fi
+
+	info "[C]:`total_capacity $_path`(KB) [N]:`total_files $_path` [C/N]:`average_filesize $_path`(KB)"
+}
+
+cpu_stamp()
+{
+	info `cat /var/run/dmesg.boot | grep -m1 CPU`
+}
+
+memory_stamp()
+{
+	info `cat /var/run/dmesg.boot | grep -m2 -i mem`
+}
+
+# vim:ft=sh ts=8 sts=8 sw=8:

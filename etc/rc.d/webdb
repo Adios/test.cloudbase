@@ -1,0 +1,58 @@
+#!/bin/sh
+#
+# $FreeBSD: ports/www/lighttpd/files/lighttpd.sh.in,v 1.7 2010/08/03 19:09:15 mm Exp $
+#
+# PROVIDE: webdb
+# REQUIRE: DAEMON
+# KEYWORD: shutdown
+#
+# Add the following lines to /etc/rc.conf to enable acpt:
+#
+# webdb_enable (bool):		Set it to "YES" to enable webdb.
+#                               Default is "NO".
+# webdb_chdir (path):		Set full path to webdb root.
+#                               Default is "/var/run/webdb".
+#				
+
+. /etc/rc.subr
+
+name=webdb
+rc_var=`set_rcvar`
+
+load_rc_config $name
+
+#
+# in case user have no permission to run the script from the standard path.
+#
+_rc_config=`dirname \`realpath $0\``/../rc.conf
+test -e $_rc_config && . $_rc_config
+
+: ${webdb_enable:="NO"}
+: ${webdb_chdir:="/var/run/webdb"}
+
+start_cmd=start_cmd
+stop_cmd=stop_cmd
+clean_cmd=clean_cmd
+extra_commands="clean"
+
+start_cmd()
+{
+	cd ${webdb_chdir} && make server > /dev/null 2>&1
+	echo "Starting ${name}."
+}
+
+stop_cmd()
+{
+	cd ${webdb_chdir} && make shutdown > /dev/null 2>&1 && \
+	echo "Stopping ${name}."
+}
+
+clean_cmd()
+{
+	run_rc_command stop
+	cd ${webdb_chdir} && make clean > /dev/null 2>&1 && \
+	echo "Cleaning ${name}."
+}
+
+run_rc_command $1
+# vim:ts=8 sts=8 sw=8:
