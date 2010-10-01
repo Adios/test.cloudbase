@@ -45,8 +45,7 @@ for path in ${backup_subject}; do
 	pop_wd clean
 done
 
-cpu_stamp
-memory_stamp
+deploy_stamp
 
 daemon stop
 

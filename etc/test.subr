@@ -8,6 +8,8 @@
 
 # list of recently working directories.
 _wd_list=
+# prefix for mktemp.
+_mktemp_prefix=`basename $0`
 
 #
 # benchmark command
@@ -15,16 +17,18 @@ _wd_list=
 #
 benchmark()
 {
-	local _command _result
+	local _command _result _tmpfile
 	_command=$@
 
 	if [ -z "$_command" ]; then
 		err 64 'UESAGE: benchmark command'
 	fi
 
+	_tmpfile=`mktemp -t $_mktemp_prefix` || exit 1
+
 	info "<$_command>:"
-	_result=`time 2>&1 ${_verbose_benchmark+'-l'} $_command > /dev/null` || exit 1
-	printf "$_result\n\n"
+	time -o $_tmpfile ${_verbose_benchmark+'-l'} $_command > /dev/null 2>&1 || exit 1
+	cat $_tmpfile && rm -f $_tmpfile
 }
 
 #
@@ -52,8 +56,7 @@ push_wd()
 	if [ -n "$_dir" ]; then
 		cd $_dir
 	else
-		_prefix=`basename $0`
-		cd `mktemp -d -t $_prefix` || exit 1
+		cd `mktemp -d -t $_mktemp_prefix` || exit 1
 	fi
 
 	test $? -eq 0 && _wd_list="$_cwd\n$_wd_list" || exit 1
@@ -268,6 +271,28 @@ pathinfo_stamp()
 	fi
 
 	info "[C]:`total_capacity $_path`(KB) [N]:`total_files $_path` [C/N]:`average_filesize $_path`(KB)"
+}
+
+gate_stamp()
+{
+	info "gate: $acpt_ssh_host"
+}
+
+cloudies_stamp()
+{
+	info "cloudies: $webdb_ssh_host"
+}
+
+client_stamp()
+{
+	info "client: `hostname`"
+}
+
+deploy_stamp()
+{
+	client_stamp
+	gate_stamp
+	cloudies_stamp
 }
 
 cpu_stamp()
